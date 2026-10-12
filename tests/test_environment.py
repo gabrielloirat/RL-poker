@@ -1,4 +1,3 @@
-"""Regression checks for manual actions, betting rounds and game termination."""
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -47,7 +46,7 @@ class EnvironmentTests(unittest.TestCase):
         self.assert_chips_conserved()
 
     def test_all_in_finishes_and_reset_allows_play_again(self):
-        # A fixed deal prevents a tie from making the expected result ambiguous.
+
         self.env.current_player.cards = ["AS", "AH"]
         self.env.players[1 - self.env.current_player.seat].cards = ["KS", "KH"]
         board = iter(["2C", "3D", "7H", "8S", "9C"])

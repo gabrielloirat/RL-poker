@@ -1,4 +1,3 @@
-"""Registration to Gym."""
 from gym.envs.registration import register
 
 register(

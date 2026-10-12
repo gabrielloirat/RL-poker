@@ -1,14 +1,18 @@
-"""Texas Hold'em hand evaluation, adapted from neuron_poker."""
-
 CARD_RANKS_ORIGINAL = "23456789TJQKA"
 SUITS_ORIGINAL = "CDHS"
 
 
 def get_winner(player_hands, table_cards):
-    player_cards_with_table_cards = [player_hand + table_cards for player_hand in player_hands]
-    best_hand, winner_card_type = eval_best_hand(player_cards_with_table_cards)
-    best_hand_ix = player_cards_with_table_cards.index(best_hand)
-    return best_hand_ix, winner_card_type
+    winners, hand_type = get_winners(player_hands, table_cards)
+    return winners[0], hand_type
+
+
+def get_winners(player_hands, table_cards):
+
+    scores = [_calc_score(hand + table_cards) for hand in player_hands]
+    best = max(score[:2] for score in scores)
+    winners = [i for i, score in enumerate(scores) if score[:2] == best]
+    return winners, scores[winners[0]][2]
 
 
 def eval_best_hand(hands):
@@ -34,8 +38,7 @@ def _calc_score(hand):
         card_ranks = (card_ranks[0], card_ranks[1], kicker)
     elif score[0] == 4:
         score = (4,)
-        sorted_card_ranks = sorted(card_ranks, reverse=True)
-        card_ranks = (sorted_card_ranks[0], sorted_card_ranks[1])
+        card_ranks = (card_ranks[0], max(card_ranks[1:]))
     elif len(score) >= 5:
         straight = False
         if 12 in card_ranks:

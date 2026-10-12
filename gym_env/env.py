@@ -1,16 +1,15 @@
-"""Groupier functions"""
 import logging
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from gym import Env
-from gym.spaces import Discrete
+from gym.spaces import Box, Discrete
 
 from gym_env.cycle import PlayerCycle
 from gym_env.enums import Action, Stage
 from gym_env.rendering import PygletWindow, WHITE, RED, GREEN, BLUE
-from tools.hand_evaluator import get_winner
+from tools.hand_evaluator import get_winners
 from tools.helper import flatten
 
 log = logging.getLogger(__name__)
@@ -51,13 +50,18 @@ class PlayerData:
 
 
 class HoldemTable(Env):
-    """Texas Hold'em Gym environment. No built-in agents."""
+
 
     def __init__(self, initial_stacks=100, small_blind=1, big_blind=2, render=False, funds_plot=False,
-                 max_raises_per_player_round=2, raise_illegal_moves=False):
+                 max_raises_per_player_round=2, raise_illegal_moves=False,
+                 single_hand=False, compute_equity=True):
         from tools.montecarlo_python import get_equity
         self.get_equity = get_equity
         self._equity_cache = {}
+        self.single_hand = single_hand
+        self.compute_equity = compute_equity
+        self._card_rng = np.random.default_rng()
+        self.winner_indices = []
         self.num_of_players = 0
         self.small_blind = small_blind
         self.big_blind = big_blind
@@ -104,7 +108,9 @@ class HoldemTable(Env):
         self.first_action_for_hand = None
         self.raise_illegal_moves = raise_illegal_moves
 
-    def reset(self):
+    def reset(self, *, seed=None, dealer_start=0):
+        if seed is not None:
+            self._card_rng = np.random.default_rng(seed)
         self.observation = None
         self.reward = None
         self.info = None
@@ -113,6 +119,8 @@ class HoldemTable(Env):
         self.first_action_for_hand = [True] * len(self.players)
         if len(self.players) < 2:
             raise ValueError("Add at least two players before resetting the environment.")
+        if not 0 <= dealer_start < len(self.players):
+            raise ValueError("dealer_start must identify a player seat.")
         for player in self.players:
             player.stack = self.initial_stacks
             player.actions.clear()
@@ -120,9 +128,9 @@ class HoldemTable(Env):
             player.equity_alive = 0
         self.current_player = None
         self.winner_ix = None
+        self.winner_indices = []
         self.dealer_pos = 0
-        max_steps_after_raiser = (self.max_raises_per_player_round - 1) * len(self.players) - 1
-        self.player_cycle = PlayerCycle(self.players, dealer_idx=-1, max_steps_after_raiser=max_steps_after_raiser,
+        self.player_cycle = PlayerCycle(self.players, dealer_idx=dealer_start - 1, max_steps_after_raiser=None,
                                         max_steps_after_big_blind=len(self.players),
                                         max_raises_per_player_round=self.max_raises_per_player_round)
         self._start_new_hand()
@@ -151,7 +159,10 @@ class HoldemTable(Env):
         self._next_player()
         if self.stage in [Stage.END_HIDDEN, Stage.SHOWDOWN]:
             self._end_hand()
-            self._start_new_hand()
+            if self.single_hand:
+                self.done = True
+            else:
+                self._start_new_hand()
         self._get_environment()
 
     def _illegal_move(self, action):
@@ -182,10 +193,10 @@ class HoldemTable(Env):
         self.player_data.stack = [player.stack / (self.big_blind * 100) for player in self.players]
         self.player_data.position = self.current_player.seat
 
-        # Monte Carlo is kept ONLY to compute equity for display/info.
+
         alive_count = int(sum(self.player_cycle.alive))
         for player, alive in zip(self.players, self.player_cycle.alive):
-            if not alive:
+            if not self.compute_equity or not alive:
                 player.equity_alive = 0.0
             elif alive_count == 1:
                 player.equity_alive = 1.0
@@ -197,13 +208,13 @@ class HoldemTable(Env):
                     )
                 player.equity_alive = self._equity_cache[cache_key]
         self.player_data.equity_to_river_alive = self.current_player.equity_alive
-        self.player_data.equity_to_river_2plr = np.nan
-        self.player_data.equity_to_river_3plr = np.nan
+        self.player_data.equity_to_river_2plr = 0.0
+        self.player_data.equity_to_river_3plr = 0.0
 
         arr1 = np.array(list(flatten(self.player_data.__dict__.values())))
         arr2 = np.array(list(flatten(self.community_data.__dict__.values())))
         arr3 = np.array([list(flatten(sd.__dict__.values())) for sd in self.stage_data]).flatten()
-        self.array_everything = np.concatenate([arr1, arr2, arr3]).flatten()
+        self.array_everything = np.concatenate([arr1, arr2, arr3]).flatten().astype(np.float32)
         self.observation = self.array_everything
         self.info = {
             'player_data': self.player_data.__dict__,
@@ -211,7 +222,7 @@ class HoldemTable(Env):
             'stage_data': [stage.__dict__ for stage in self.stage_data],
             'legal_moves': self.legal_moves,
         }
-        self.observation_space = self.array_everything.shape
+        self.observation_space = Box(-np.inf, np.inf, shape=self.array_everything.shape, dtype=np.float32)
         if self.render_switch:
             self.render()
 
@@ -347,23 +358,28 @@ class HoldemTable(Env):
         for player in self.players:
             player.last_action_in_stage = ''
         self.player_cycle.new_street_reset()
-        if self.stage != Stage.PREFLOP and self.num_of_players == 2:
-            self.player_cycle.idx += 1
+        if self.stage == Stage.PREFLOP and sum(self.player_cycle.alive) == 2:
+
+            self.player_cycle.idx -= 1
         if self.stage == Stage.PREFLOP:
-            self.player_cycle.max_steps_total = len(self.players) * self.max_raises_per_player_round + 2
+            self.player_cycle.max_steps_total = len(self.players) * (
+                len(self.players) * self.max_raises_per_player_round + 1
+            ) + 2
             self._next_player()
             self._process_decision(Action.SMALL_BLIND)
             self._next_player()
             self._process_decision(Action.BIG_BLIND)
             self._next_player()
         elif self.stage in [Stage.FLOP, Stage.TURN, Stage.RIVER]:
-            self.player_cycle.max_steps_total = len(self.players) * self.max_raises_per_player_round
+            self.player_cycle.max_steps_total = len(self.players) * (
+                len(self.players) * self.max_raises_per_player_round + 1
+            )
             self._next_player()
         elif self.stage != Stage.SHOWDOWN:
             raise RuntimeError()
 
     def add_player(self, player_obj):
-        """Add a simple player object. Only its ``name`` attribute is required."""
+
         self.num_of_players += 1
         player = PlayerShell(stack_size=self.initial_stacks, name=player_obj.name)
         player.seat = len(self.players)
@@ -394,8 +410,40 @@ class HoldemTable(Env):
 
     def _end_hand(self):
         self._clean_up_pots()
-        self.winner_ix = self._get_winner()
-        self._award_winner(self.winner_ix)
+        potential = self.player_cycle.get_potential_winners()
+        seats = [i for i, eligible in enumerate(potential) if eligible]
+        if len(seats) == 1:
+            self.winner_indices = seats
+        else:
+            indices, _ = get_winners([self.players[i].cards for i in seats], self.table_cards)
+            self.winner_indices = [seats[i] for i in indices]
+        self.winner_ix = self.winner_indices[0]
+
+
+        previous = 0
+        winners = set()
+        for level in sorted(set(self.player_max_win) - {0}):
+            contributors = [i for i, amount in enumerate(self.player_max_win) if amount >= level]
+            delta = level - previous
+            previous = level
+            eligible = [i for i in contributors if potential[i]]
+            if len(contributors) == 1 or not eligible:
+
+                for i in contributors:
+                    self.players[i].stack += delta
+                continue
+            if len(eligible) == 1:
+                pot_winners = eligible
+            else:
+                indices, _ = get_winners([self.players[i].cards for i in eligible], self.table_cards)
+                pot_winners = [eligible[i] for i in indices]
+            share = delta * len(contributors) / len(pot_winners)
+            for i in pot_winners:
+                self.players[i].stack += share
+            winners.update(pot_winners)
+        if winners:
+            self.winner_indices = sorted(winners)
+            self.winner_ix = self.winner_indices[0]
 
     def _get_winner(self):
         potential_winners = self.player_cycle.get_potential_winners()
@@ -403,10 +451,10 @@ class HoldemTable(Env):
         if sum(potential_winners) == 1:
             return potential_winner_idx[0]
         assert self.stage == Stage.SHOWDOWN
-        remaining_ix, _ = get_winner(
+        remaining_indices, _ = get_winners(
             [player.cards for ix, player in enumerate(self.players) if potential_winners[ix]], self.table_cards
         )
-        return potential_winner_idx[remaining_ix]
+        return potential_winner_idx[remaining_indices[0]]
 
     def _award_winner(self, winner_ix):
         max_win_per_player_for_winner = self.player_max_win[winner_ix]
@@ -464,12 +512,12 @@ class HoldemTable(Env):
             if player.stack <= 0:
                 continue
             for _ in range(2):
-                card = np.random.randint(0, len(self.deck))
+                card = self._card_rng.integers(0, len(self.deck))
                 player.cards.append(self.deck.pop(card))
 
     def _distribute_cards_to_table(self, amount_of_cards):
         for _ in range(amount_of_cards):
-            card = np.random.randint(0, len(self.deck))
+            card = self._card_rng.integers(0, len(self.deck))
             self.table_cards.append(self.deck.pop(card))
 
     def render(self, mode='human'):
@@ -492,8 +540,11 @@ class HoldemTable(Env):
             self.viewer.text(self.players[i].name, x - 60, y - 15, font_size=10, color=WHITE)
             self.viewer.text(f"Player {self.players[i].seat}: {self.players[i].cards}", x - 60, y,
                              font_size=10, color=WHITE)
-            equity_alive = int(round(float(self.players[i].equity_alive) * 100))
-            self.viewer.text(f"${self.players[i].stack} (EQ: {equity_alive}%)", x - 60, y + 15,
+            stack_label = f"${self.players[i].stack}"
+            if self.compute_equity:
+                equity_alive = int(round(float(self.players[i].equity_alive) * 100))
+                stack_label += f" (EQ: {equity_alive}%)"
+            self.viewer.text(stack_label, x - 60, y + 15,
                              font_size=10, color=WHITE)
             self.viewer.text(self.players[i].last_action_in_stage, x - 60, y + 30, font_size=10, color=WHITE)
             x_inner = (-face_radius + table_radius - 60) * np.cos(radian) + screen_width / 2

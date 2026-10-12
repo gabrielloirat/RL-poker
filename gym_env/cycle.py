@@ -1,5 +1,3 @@
-"""Cycle class that handles the low level logic of the game."""
-
 import logging
 import numpy as np
 
@@ -7,7 +5,7 @@ log = logging.getLogger(__name__)
 
 
 class PlayerCycle:
-    """Handle the circularity of the table."""
+
 
     def __init__(self, lst, start_idx=0, dealer_idx=0, max_steps_total=None,
                  last_raiser_step=None, max_steps_after_raiser=None, max_steps_after_big_blind=None,
@@ -115,6 +113,9 @@ class PlayerCycle:
 
     def mark_bb(self):
         self.last_raiser_step = self.step_counter + len(self.lst)
+
+
+        self.last_raiser = self.step_counter + 1
         self.max_steps_total = self.step_counter + len(self.lst) * self.max_raises_per_player_round + 2
 
     def is_raising_allowed(self):

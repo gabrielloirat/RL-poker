@@ -1,4 +1,3 @@
-"""Pyglet rendering adapted from neuron_poker."""
 from math import radians, cos, sin
 
 import numpy as np
@@ -11,9 +10,9 @@ RED = list(np.array([255, 0, 0, 123]))
 
 
 class PygletWindow:
-    def __init__(self, width, height):
+    def __init__(self, width, height, *, resizable=False):
         self.active = True
-        self.display_surface = pyglet.window.Window(width=width, height=height + 50)
+        self.display_surface = pyglet.window.Window(width=width, height=height + 50, resizable=resizable)
         self.display_surface.set_caption("Neuron Poker - jeu manuel")
         self.display_surface.push_handlers(on_close=self._on_close)
         self.top = height
@@ -52,7 +51,7 @@ class PygletWindow:
             4, pyglet.gl.GL_QUADS,
             ("v2f", [x, y, x + dx, y, x + dx, y + dy, x, y + dy]),
         )
-        # pyglet 1.5 returns a vertex list; older code called draw() again.
+
         if hasattr(rect, "draw"):
             rect.draw()
 

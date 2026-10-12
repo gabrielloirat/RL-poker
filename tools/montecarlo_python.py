@@ -1,7 +1,3 @@
-"""Small Monte Carlo equity calculator used only by the renderer/info output.
-
-There is no agent, policy, ML model, RL code, or automatic action selection here.
-"""
 from __future__ import annotations
 
 import random
@@ -13,16 +9,14 @@ SUITS = "CDHS"
 FULL_DECK = tuple(v + s for v in VALUES for s in SUITS)
 
 
-def get_equity(player_cards, table_cards, players, runs=1000):
-    """Estimate hero showdown equity against random opponent hands.
+def get_equity(player_cards, table_cards, players, runs=1000, *, rng=None):
 
-    Ties split the pot, so a 2-way tie contributes 0.5, a 3-way tie 1/3, etc.
-    The result is used only for display in ``gym_env.env.HoldemTable.render``.
-    """
+
     hero = list(player_cards)
     board = list(table_cards)
     players = max(2, int(players))
     runs = max(1, int(runs))
+    sampler = rng if rng is not None else random
 
     known = set(hero + board)
     if len(known) != len(hero) + len(board):
@@ -35,7 +29,7 @@ def get_equity(player_cards, table_cards, players, runs=1000):
 
     equity = 0.0
     for _ in range(runs):
-        drawn = random.sample(available, needed)
+        drawn = sampler.sample(available, needed)
         offset = 0
         opponents = []
         for _ in range(players - 1):

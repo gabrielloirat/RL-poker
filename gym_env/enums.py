@@ -1,4 +1,3 @@
-"""Poker enums."""
 from enum import Enum
 
 

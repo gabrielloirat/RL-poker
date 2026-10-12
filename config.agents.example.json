@@ -1,0 +1,15 @@
+{
+  "environment": {
+    "initial_stacks": 100,
+    "small_blind": 1,
+    "big_blind": 2,
+    "max_raises_per_player_round": 2,
+    "max_actions": 200
+  },
+  "agents": [
+    {"name": "mon_agent", "kwargs": {}, "train": true},
+    {"name": "mon_adversaire", "kwargs": {}, "train": false}
+  ],
+  "episodes": 1000,
+  "seed": 42
+}
