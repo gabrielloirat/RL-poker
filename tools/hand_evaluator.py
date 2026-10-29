@@ -2,23 +2,12 @@ CARD_RANKS_ORIGINAL = "23456789TJQKA"
 SUITS_ORIGINAL = "CDHS"
 
 
-def get_winner(player_hands, table_cards):
-    winners, hand_type = get_winners(player_hands, table_cards)
-    return winners[0], hand_type
-
-
 def get_winners(player_hands, table_cards):
 
     scores = [_calc_score(hand + table_cards) for hand in player_hands]
     best = max(score[:2] for score in scores)
     winners = [i for i, score in enumerate(scores) if score[:2] == best]
     return winners, scores[winners[0]][2]
-
-
-def eval_best_hand(hands):
-    scores = [(i, _calc_score(hand)) for i, hand in enumerate(hands)]
-    winner = sorted(scores, key=lambda x: x[1], reverse=True)[0][0]
-    return hands[winner], scores[winner][1][-1]
 
 
 def _calc_score(hand):

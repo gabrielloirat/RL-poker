@@ -1,16 +1,25 @@
-from dataclasses import dataclass
 import random
 
 from tools.hand_evaluator import get_winners
 from tools.montecarlo_python import get_equity
 
 
-@dataclass(frozen=True)
 class EquitySnapshot:
-    hands: tuple[tuple[str, ...], ...]
-    board: tuple[str, ...]
-    eligible: tuple[bool, ...]
-    terminated: bool
+    def __init__(self,
+                 hands, board, eligible,
+                 terminated):  # Enregistre les données
+        self.hands = hands
+        self.board = board
+        self.eligible = eligible
+        self.terminated = terminated
+
+    def __eq__(self, other):  # Compare les valeurs
+        if not isinstance(other, EquitySnapshot):
+            return False
+        return self.__dict__ == other.__dict__
+
+    def __hash__(self):  # Identifie un état dans le cache
+        return hash((self.hands, self.board, self.eligible, self.terminated))
 
     @classmethod
     def from_game(cls, game):
