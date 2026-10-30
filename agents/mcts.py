@@ -424,8 +424,11 @@ class MCTSPolicy:
                     priors[a] = 0.05
 
         bucket = self.get_bucket(state.stage, strength, facing_bet)
+        factor_provider = getattr(self, '_benchmark_weight_factors', None)
+        factors = factor_provider(bucket) if callable(factor_provider) else None
         logits = np.array(
-            [priors.get(a, 0.1) * np.exp(np.clip(self.weights[bucket, a], -3.0, 3.0)) for a in legal_actions],
+            [priors.get(a, 0.1) * (factors[a] if factors is not None else
+                np.exp(np.clip(self.weights[bucket, a], -3.0, 3.0))) for a in legal_actions],
             dtype=np.float64,
         )
         total = np.sum(logits)

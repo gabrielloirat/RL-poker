@@ -13,6 +13,10 @@ class TableTrainingEnv(gym.Env):
     def __init__(self, session, seat, *, normalize_rewards=True, augment_suits=True, stack_depths=None,
                  curriculum_probability=0., curriculum_warmup=1024, postflop_target=.35):  # Prépare l'adaptateur
         super().__init__()
+        # SB3 seeds a newly created model's VecEnv, but set_env() on a resumed
+        # model does not. Seed here as well so suit/stack augmentation never
+        # falls back to OS entropy when continuing in a fresh table session.
+        super().reset(seed=session.seed)
         self.session = session
         self.seat = seat
         self.observation_space = session.game.observation_space
