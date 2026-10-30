@@ -1,22 +1,3 @@
-"""Agent MCTS (Information Set Monte Carlo Tree Search) pour le Texas Hold'em.
-
-Ce module implémente un agent basé sur ISMCTS (Information Set MCTS) adapté
-aux jeux à information imparfaite comme le poker.
-
-Architecture :
-- Déterminisation : à chaque itération de recherche, les cartes cachées des
-  adversaires sont échantillonnées aléatoirement parmi les cartes restantes
-  du paquet, tout en préservant les cartes privées connues et le board public.
-- Arbre de recherche : chaque nœud représente un ensemble d'information (le tour
-  d'un joueur) avec sélection par PUCT (Predictor + Upper Confidence bounds for Trees).
-- Rollout policy : politique de simulation rapide guidée par la force de la main
-  et la cote du pot (pot odds).
-- Évaluation terminale : règlements des pots principaux et secondaires avec
-  les fonctions d'évaluation de mains officielles du dépôt (`tools.hand_evaluator`).
-- Politique apprenante : adaptation progressive des préférences d'actions via
-  `observe(transition)` en mode entraînement.
-"""
-
 from __future__ import annotations
 
 import json
@@ -55,12 +36,10 @@ HAND_TYPE_SCORES = {
 
 
 def evaluate_hand_strength(hole_cards: Sequence[str], board_cards: Sequence[str]) -> float:
-    """Estime la force de la main entre 0.0 et 1.0."""
     if not hole_cards or len(hole_cards) < 2:
         return 0.20
 
     if len(board_cards) < 3:
-        # Évaluation préflop (formule inspirée des groupes de Sklansky / Chen)
         c1, c2 = hole_cards[0], hole_cards[1]
         ranks = "23456789TJQKA"
         r1, s1 = ranks.index(c1[0]), c1[1]
@@ -76,7 +55,6 @@ def evaluate_hand_strength(hole_cards: Sequence[str], board_cards: Sequence[str]
                 score += 0.05
         return float(np.clip(score, 0.05, 1.0))
 
-    # Évaluation postflop via _calc_score
     score_tuple, rank_tuple, hand_type = _calc_score(list(hole_cards) + list(board_cards))
     base = HAND_TYPE_SCORES.get(hand_type, 0.20)
     rank_bonus = 0.0
@@ -86,7 +64,6 @@ def evaluate_hand_strength(hole_cards: Sequence[str], board_cards: Sequence[str]
 
 
 class SimState:
-    """Modèle de transition rapide et déterministe pour une main de Texas Hold'em."""
 
     def __init__(
         self,
@@ -116,7 +93,7 @@ class SimState:
         self.hero_seat = hero_seat
         self.current_player = current_player
         self.dealer_pos = dealer_pos
-        self.stage = stage  # 0: PREFLOP, 1: FLOP, 2: TURN, 3: RIVER, 4: SHOWDOWN / FIN
+        self.stage = stage
         self.stacks = [float(s) for s in stacks]
         self.player_pots = [float(p) for p in player_pots]
         self.player_max_win = [float(m) for m in player_max_win]
@@ -156,15 +133,15 @@ class SimState:
         legal = []
         max_pot = max(self.player_pots)
         if self.player_pots[p] == max_pot:
-            legal.append(1)  # CHECK
+            legal.append(1)
         else:
-            legal.extend([0, 2])  # FOLD, CALL
+            legal.extend([0, 2])
 
         if self.raises_remaining[p] > 0:
             pot_now = self.community_pot + self.current_round_pot
             needed_3bb = 3 * self.big_blind - self.player_pots[p]
             if 3 * self.big_blind > self.min_call and self.stacks[p] >= needed_3bb:
-                legal.append(3)  # RAISE_3BB
+                legal.append(3)
             if self.stacks[p] >= (pot_now / 2.0) >= self.min_call:
                 legal.append(4)  # RAISE_HALF_POT
             if self.stacks[p] >= pot_now >= self.min_call:
@@ -351,8 +328,6 @@ class MCTSPolicy:
     def __init__(self, learning_rate: float = 0.05, discount_factor: float = 0.99):
         self.lr = learning_rate
         self.gamma = discount_factor
-        # 32 états : 4 stages x 4 buckets de force x 2 (facing bet: False/True)
-        # 8 actions : FOLD..ALL_IN
         self.weights = np.zeros((32, 8), dtype=np.float32)
 
     def get_bucket(self, stage: int, strength: float, facing_bet: bool) -> int:
@@ -388,7 +363,6 @@ class MCTSPolicy:
             if a == 0:  # FOLD
                 if facing_bet:
                     if stack_commitment > 0.40 or to_call > 2.0 * pot:
-                        # Face à un tapis ou très grosse mise : coucher les mains faibles/moyennes
                         priors[a] = 5.0 if strength < 0.65 else 0.10
                     elif strength < pot_odds:
                         priors[a] = 2.5
@@ -408,7 +382,7 @@ class MCTSPolicy:
                         priors[a] = 0.30
                 else:
                     priors[a] = 0.10
-            elif a in (3, 4, 5, 6):  # RELANCES MODÉRÉES
+            elif a in (3, 4, 5, 6):
                 if strength >= 0.70:
                     priors[a] = 2.5
                 elif strength >= 0.55:
@@ -457,7 +431,6 @@ class MCTSPolicy:
 
         r = rng.random()
         if facing_bet:
-            # Grosse mise ou tapis
             if stack_commitment > 0.40 or to_call > 2.0 * pot:
                 if strength < 0.65:
                     return 0 if 0 in legal else legal[0]
@@ -540,7 +513,6 @@ class ISMCTS:
             node = root
             path: list[tuple[MCTSNode, int]] = []
 
-            # 1. SÉLECTION
             while not sim_state.is_terminal():
                 legal = sim_state.get_legal_actions()
                 if not legal:
@@ -548,7 +520,6 @@ class ISMCTS:
 
                 unexpanded = [a for a in legal if a not in node.children]
                 if unexpanded:
-                    # 2. EXPANSION
                     priors = self.policy.get_action_priors(sim_state, sim_state.current_player, unexpanded)
                     chosen_action = max(unexpanded, key=lambda a: priors.get(a, 0.0) + self.rng.random() * 0.01)
                     sim_state.apply_action(chosen_action, self.rng)
@@ -558,7 +529,6 @@ class ISMCTS:
                     node = new_node
                     break
                 else:
-                    # Sélection PUCT parmi les actions légales dans cette déterminisation
                     priors = self.policy.get_action_priors(sim_state, sim_state.current_player, legal)
                     total_n = sum(node.action_visits.get(a, 0) for a in legal)
                     best_score = -float("inf")
@@ -588,12 +558,10 @@ class ISMCTS:
                     path.append((node, best_action))
                     node = node.children[best_action]
 
-            # 3. ROLLOUT
             while not sim_state.is_terminal():
                 action = self.policy.get_rollout_action(sim_state, self.rng)
                 sim_state.apply_action(action, self.rng)
 
-            # 4. RÉTROPROPAGATION
             terminal_rewards = sim_state.get_terminal_rewards_bb()
             for parent_node, action in path:
                 r = terminal_rewards[parent_node.player]
@@ -643,7 +611,6 @@ def _observation_to_sim_state_factory(observation: np.ndarray):
     min_call = max(street_bets) if any(street_bets) else 0.0
     start_stacks = [stacks[s] + hand_contrib[s] for s in range(num_players)]
 
-    # Initialiser acted_in_street d'après last_actions
     acted_in_street = [False] * num_players
     for s in range(num_players):
         rel = (s - hero_seat) % num_players
@@ -720,7 +687,7 @@ class MCTSAgent:
             rng=self.rng,
         )
 
-        self._pending_decisions: list[tuple[int, int]] = []  # (bucket, action)
+        self._pending_decisions: list[tuple[int, int]] = []
 
         if self.checkpoint_path and self.checkpoint_path.is_file():
             self.load_checkpoint(self.checkpoint_path)
@@ -735,7 +702,6 @@ class MCTSAgent:
         factory = _observation_to_sim_state_factory(observation)
         visits, best_action = self.mcts.search(factory, legal)
 
-        # Enregistrement pour l'apprentissage dans observe()
         if training:
             root_state = factory(self.rng)
             strength = evaluate_hand_strength(root_state.hole_cards[root_state.hero_seat], root_state.board)
