@@ -1,15 +1,14 @@
-from __future__ import annotations
 
 import gymnasium as gym
 
 from poker_rl.game import PokerGame
-from poker_rl.interface import Agent, load_agent
+from poker_rl.interface import load_agent
 
 
 class PokerEnv(gym.Env):
     metadata = {"render_modes": ["human"], "render_fps": 4}
 
-    def __init__(self, opponent: Agent | str, *, agent_seat=0, render_mode=None,
+    def __init__(self, opponent, *, agent_seat=0, render_mode=None,
                  agents_dir=None, opponent_kwargs=None, **game_kwargs):
         super().__init__()
         if game_kwargs.get("num_players", 2) != 2:
@@ -66,7 +65,9 @@ class PokerEnv(gym.Env):
         if self._reset_required:
             raise RuntimeError("Call reset() before stepping a new episode.")
         _, rewards, terminated, truncated, step_info = self.game.step(action)
-        penalty = float(rewards[self.agent_seat]) if step_info["illegal_action"] else 0.0
+        penalty = 0.0
+        if step_info["illegal_action"]:
+            penalty = float(rewards[self.agent_seat])
         self._play_opponent()
         terminated, truncated = self.game.terminated, self.game.truncated
         reward = float(self.game.rewards()[self.agent_seat]) + penalty

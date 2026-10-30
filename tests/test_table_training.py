@@ -79,6 +79,18 @@ class TableTrainingTests(unittest.TestCase):
             self.assertEqual(agent.updates, 0)
             self.assertFalse(any(agent.flags + agent.starts))
 
+    def test_existing_agents_are_used_without_loading_replacements(self):
+        from unittest.mock import patch
+        agents = [Learner(), Learner()]
+        with patch.object(Registry, 'load', side_effect=AssertionError('Unexpected agent load')):
+            session = self.session(agents=agents, mode='train', training_seats=(0,))
+            self.finish(session)
+        self.assertTrue(all(actual is expected for actual, expected in zip(session.agents, agents)))
+        self.assertGreater(agents[0].updates, 0)
+        self.assertEqual(agents[1].updates, 0)
+        with self.assertRaisesRegex(ValueError, 'un agent par joueur'):
+            self.session(agents=[Learner()])
+
     def test_watching_keeps_learned_instances_and_stops_learning(self):
         session = self.session(3, mode="train", training_seats=(0, 2))
         session.run_batch(5)

@@ -14,7 +14,6 @@ from tools.helper import flatten
 
 log = logging.getLogger(__name__)
 
-winner_in_episodes = []
 MONTEACRLO_RUNS = 1000
 
 
@@ -444,27 +443,6 @@ class HoldemTable(Env):
         if winners:
             self.winner_indices = sorted(winners)
             self.winner_ix = self.winner_indices[0]
-
-    def _get_winner(self):
-        potential_winners = self.player_cycle.get_potential_winners()
-        potential_winner_idx = [i for i, p in enumerate(potential_winners) if p]
-        if sum(potential_winners) == 1:
-            return potential_winner_idx[0]
-        assert self.stage == Stage.SHOWDOWN
-        remaining_indices, _ = get_winners(
-            [player.cards for ix, player in enumerate(self.players) if potential_winners[ix]], self.table_cards
-        )
-        return potential_winner_idx[remaining_indices[0]]
-
-    def _award_winner(self, winner_ix):
-        max_win_per_player_for_winner = self.player_max_win[winner_ix]
-        total_winnings = sum(np.minimum(max_win_per_player_for_winner, self.player_max_win))
-        remains = np.maximum(0, np.array(self.player_max_win) - max_win_per_player_for_winner)
-        self.players[winner_ix].stack += total_winnings
-        self.winner_ix = winner_ix
-        if total_winnings < sum(self.player_max_win):
-            for i, player in enumerate(self.players):
-                player.stack += remains[i]
 
     def _next_dealer(self):
         self.dealer_pos = self.player_cycle.next_dealer().seat

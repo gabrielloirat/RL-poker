@@ -1,26 +1,21 @@
-import logging
 import numpy as np
-
-log = logging.getLogger(__name__)
 
 
 class PlayerCycle:
 
 
     def __init__(self, lst, start_idx=0, dealer_idx=0, max_steps_total=None,
-                 last_raiser_step=None, max_steps_after_raiser=None, max_steps_after_big_blind=None,
+                 max_steps_after_raiser=None, max_steps_after_big_blind=None,
                  max_raises_per_player_round=2):
         self.lst = lst
         self.start_idx = start_idx
         self.size = len(lst)
         self.max_steps_total = max_steps_total
-        self.last_raiser_step = last_raiser_step
         self.max_steps_after_raiser = max_steps_after_raiser
         self.max_steps_after_big_blind = max_steps_after_big_blind
         self.last_raiser = None
         self.step_counter = 0
         self.steps_for_blind_betting = 2
-        self.round_number_in_street = 0
         self.idx = 0
         self.dealer_idx = dealer_idx
         self.can_still_make_moves_in_this_hand = []
@@ -41,9 +36,7 @@ class PlayerCycle:
 
     def new_street_reset(self):
         self.step_counter = 0
-        self.round_number_in_street = 0
         self.idx = self.dealer_idx
-        self.last_raiser_step = len(self.lst)
         self.checkers = 0
         self.max_remaining_steps_without_raising = len(self.alive) - 1
         self.last_raiser = None
@@ -56,8 +49,6 @@ class PlayerCycle:
         self.idx += step
         self.step_counter += step
         self.idx %= len(self.lst)
-        if self.step_counter > len(self.lst):
-            self.round_number_in_street += 1
         if self.max_steps_total and self.step_counter > self.max_steps_total:
             return False
         if self.last_raiser:
@@ -86,9 +77,6 @@ class PlayerCycle:
             self.dealer_idx = (self.dealer_idx + 1) % len(self.lst)
         return self.lst[self.dealer_idx]
 
-    def set_idx(self, idx):
-        self.idx = idx
-
     def deactivate_player(self, idx):
         assert self.can_still_make_moves_in_this_hand[idx], "Already deactivated"
         self.can_still_make_moves_in_this_hand[idx] = False
@@ -112,14 +100,8 @@ class PlayerCycle:
         self.deactivate_current()
 
     def mark_bb(self):
-        self.last_raiser_step = self.step_counter + len(self.lst)
-
-
         self.last_raiser = self.step_counter + 1
         self.max_steps_total = self.step_counter + len(self.lst) * self.max_raises_per_player_round + 2
-
-    def is_raising_allowed(self):
-        return self.step_counter <= self.last_raiser_step
 
     def update_alive(self):
         self.alive = np.array(self.can_still_make_moves_in_this_hand) + np.array(self.out_of_cash_but_contributed)

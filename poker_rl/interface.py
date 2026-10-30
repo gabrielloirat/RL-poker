@@ -1,49 +1,57 @@
-from __future__ import annotations
 
-from dataclasses import dataclass
 from importlib import import_module
-from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
-
-import numpy as np
 
 
-@dataclass(frozen=True)
 class Transition:
 
 
-    observation: np.ndarray
-    action_mask: np.ndarray
-    action: int
-    reward: float
-    next_observation: np.ndarray
-    next_action_mask: np.ndarray
-    terminated: bool
-    truncated: bool
-    info: dict[str, Any]
+    def __init__(self,
+                 observation, action_mask, action,
+                 reward, next_observation, next_action_mask,
+                 terminated, truncated, info):  # Enregistre les données
+        self.observation = observation
+        self.action_mask = action_mask
+        self.action = action
+        self.reward = reward
+        self.next_observation = next_observation
+        self.next_action_mask = next_action_mask
+        self.terminated = terminated
+        self.truncated = truncated
+        self.info = info
+
+    def to_dict(self):  # Prépare les données à sauvegarder
+        return {
+            "observation": self.observation,
+            "action_mask": self.action_mask,
+            "action": self.action,
+            "reward": self.reward,
+            "next_observation": self.next_observation,
+            "next_action_mask": self.next_action_mask,
+            "terminated": self.terminated,
+            "truncated": self.truncated,
+            "info": self.info,
+        }
 
 
-@runtime_checkable
-class Agent(Protocol):
-    def act(self, observation: np.ndarray, action_mask: np.ndarray,
-            *, training: bool = False) -> int:
-
-        ...
+class Agent:
+    def act(self, observation, action_mask, training=False):  # À définir dans chaque agent
+        raise NotImplementedError("L'agent doit définir act().")
 
 
-@runtime_checkable
-class TrainableAgent(Agent, Protocol):
-    def observe(self, transition: Transition) -> None:
-
-        ...
+class TrainableAgent(Agent):
+    def observe(self, transition):  # À définir pour un agent entraînable
+        raise NotImplementedError("L'agent doit définir observe().")
 
 
-def load_agent(spec: str, kwargs: dict[str, Any] | None = None, *,
-               agents_dir: str | Path | None = None) -> Agent:
+def load_agent(spec, kwargs = None, *,
+               agents_dir = None) :
 
     if ":" not in spec:
         from poker_rl.plugins import AgentRegistry, DEFAULT_AGENTS_DIR
-        return AgentRegistry(agents_dir if agents_dir is not None else DEFAULT_AGENTS_DIR).load(spec, kwargs)
+        if agents_dir is None:
+            agents_dir = DEFAULT_AGENTS_DIR
+        registry = AgentRegistry(agents_dir)
+        return registry.load(spec, kwargs)
     module_name, separator, attribute = spec.partition(":")
     if not separator or not module_name or not attribute:
         raise ValueError("Agent must be specified as python_module:ClassOrFactory.")

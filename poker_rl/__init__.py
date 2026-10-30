@@ -5,9 +5,11 @@ from poker_rl.game import ACTION_NAMES, CARD_ORDER, OBSERVATION_FIELDS, PokerGam
 from poker_rl.interface import Agent, TrainableAgent, Transition, load_agent
 from poker_rl.plugins import AgentRegistry
 from poker_rl.session import EpisodeResult, run_session
+from poker_rl.arena import run_arena
+from poker_rl.records import SessionRecorder
 
 register(id="poker-rl-v0", entry_point="poker_rl.env:PokerEnv")
 
 __all__ = ["PokerEnv", "PokerGame", "Agent", "TrainableAgent", "Transition",
            "load_agent", "AgentRegistry", "run_session", "EpisodeResult", "ACTION_NAMES",
-           "CARD_ORDER", "OBSERVATION_FIELDS", "observation_fields"]
+           "CARD_ORDER", "OBSERVATION_FIELDS", "observation_fields", "run_arena", "SessionRecorder"]
